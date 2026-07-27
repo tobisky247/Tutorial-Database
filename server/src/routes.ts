@@ -23,7 +23,7 @@ async function authenticate(req: any, res: any, next: any) {
   next();
 }
 
-// 1. Auth Endpoint
+// 1. Auth Login Endpoint
 apiRouter.post('/auth/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
@@ -40,7 +40,7 @@ apiRouter.post('/auth/login', async (req, res) => {
   }
 
   // Simple mock password check since it's Phase 1
-  if (password !== 'password123') {
+  if (password !== user.passwordHash) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
 
@@ -65,6 +65,81 @@ apiRouter.post('/auth/login', async (req, res) => {
       profile: user.profile,
     },
   });
+});
+
+// 2. Auth Register Endpoint
+apiRouter.post('/auth/register', async (req, res) => {
+  const { email, password, firstName, lastName } = req.body;
+  
+  if (!email || !password || !firstName || !lastName) {
+    return res.status(400).json({ error: 'Email, password, first name, and last name are required' });
+  }
+
+  try {
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      return res.status(400).json({ error: 'Email is already registered' });
+    }
+
+    const newUser = await prisma.user.create({
+      data: {
+        email,
+        passwordHash: password, // Plain text for phase 1
+        profile: {
+          create: {
+            firstName,
+            lastName,
+            targetScore: 7,
+            studyHoursPerWeek: 5,
+          },
+        },
+        recommendations: {
+          create: [
+            {
+              title: 'Writing Task 2 — Opinion Essays',
+              reason: 'Recommended because your last Writing Task 2 attempts scored lowest on Coherence & Cohesion',
+            },
+            {
+              title: 'Reading — True/False/Not Given',
+              reason: 'Practice this question type to improve your Reading score.',
+            }
+          ]
+        },
+        masteryRecords: {
+          create: [
+            { skillName: 'Writing Task 2', status: 'Learning' },
+            { skillName: 'Reading - T/F/NG', status: 'Developing' },
+            { skillName: 'AP Argument FRQ', status: 'Not started' }
+          ]
+        }
+      },
+      include: { profile: true },
+    });
+
+    // Create session
+    const token = Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    await prisma.session.create({
+      data: {
+        userId: newUser.id,
+        token,
+        expiresAt,
+      },
+    });
+
+    res.status(201).json({
+      token,
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        profile: newUser.profile,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to register user', details: error.message });
+  }
 });
 
 // 2. Dashboard Endpoint

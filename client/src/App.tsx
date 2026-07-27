@@ -45,9 +45,18 @@ type Tab = 'dashboard' | 'ielts-practice' | 'ielts-mock' | 'ap-practice' | 'ap-m
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
-  const [token, setToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [token, setToken] = useState<string | null>(localStorage.getItem('exam_token'));
+  const [loading, setLoading] = useState(!!localStorage.getItem('exam_token'));
   const [error, setError] = useState<string | null>(null);
+
+  // Auth form states
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authFirstName, setAuthFirstName] = useState('');
+  const [authLastName, setAuthLastName] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Data states
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -83,26 +92,42 @@ function App() {
   const [apTimer, setApTimer] = useState(2700); // 45 min
   const [apSubmitting, setApSubmitting] = useState(false);
 
-  // Auto Login
-  useEffect(() => {
-    async function login() {
-      try {
-        const res = await fetch(`${API_BASE}/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: 'sena@example.com', password: 'password123' }),
-        });
-        if (!res.ok) throw new Error('Login failed');
-        const data = await res.json();
-        setToken(data.token);
-        setProfile(data.user.profile);
-      } catch (err: any) {
-        setError(err.message);
-        setLoading(false);
-      }
+  // ─── Auth Handlers ────────────────────────────────────────────────────────
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const endpoint = authMode === 'login' ? '/auth/login' : '/auth/register';
+      const body = authMode === 'login' 
+        ? { email: authEmail, password: authPassword }
+        : { email: authEmail, password: authPassword, firstName: authFirstName, lastName: authLastName };
+
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Authentication failed');
+      
+      localStorage.setItem('exam_token', data.token);
+      setToken(data.token);
+      setProfile(data.user.profile);
+    } catch (err: any) {
+      setAuthError(err.message);
+    } finally {
+      setAuthLoading(false);
     }
-    login();
-  }, []);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('exam_token');
+    setToken(null);
+    setProfile(null);
+    setActiveTab('dashboard');
+  };
 
   // Fetch Dashboard & Questions
   useEffect(() => {
@@ -120,7 +145,11 @@ function App() {
         setRecommendations(dashData.recommendations);
         setQuestions(qData.questions);
         setLoading(false);
+        setLoading(false);
       } catch (err: any) {
+        if (err.message.includes('401')) {
+          handleLogout(); // clear invalid token
+        }
         setError(err.message);
         setLoading(false);
       }
@@ -197,6 +226,46 @@ function App() {
     return map[key] ?? key.replace(/([A-Z])/g, ' $1').trim();
   };
 
+  if (!token) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: 'var(--paper)', padding: 20 }}>
+        <div style={{ background: 'var(--paper-raised)', padding: 40, borderRadius: 16, width: '100%', maxWidth: 400, border: '1px solid var(--rule)', boxShadow: 'var(--shadow)' }}>
+          <div style={{ textAlign: 'center', marginBottom: 32 }}>
+            <div className="brand" style={{ fontSize: 24, marginBottom: 8 }}><span className="brand-mark">E</span> Exam Mastery</div>
+            <p style={{ color: 'var(--ink-soft)', fontSize: 15 }}>
+              {authMode === 'login' ? 'Sign in to continue your preparation' : 'Create an account to start practicing'}
+            </p>
+          </div>
+          <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {authMode === 'register' && (
+              <div style={{ display: 'flex', gap: 12 }}>
+                <input required type="text" placeholder="First Name" value={authFirstName} onChange={e => setAuthFirstName(e.target.value)} className="form-input" style={{ flex: 1 }} />
+                <input required type="text" placeholder="Last Name" value={authLastName} onChange={e => setAuthLastName(e.target.value)} className="form-input" style={{ flex: 1 }} />
+              </div>
+            )}
+            <input required type="email" placeholder="Email Address" value={authEmail} onChange={e => setAuthEmail(e.target.value)} className="form-input" />
+            <input required type="password" placeholder="Password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} className="form-input" />
+            
+            {authError && <div style={{ color: 'var(--brick)', fontSize: 13, background: 'var(--brick-soft)', padding: 12, borderRadius: 8 }}>{authError}</div>}
+            
+            <button type="submit" className="btn-primary" disabled={authLoading} style={{ marginTop: 8 }}>
+              {authLoading ? 'Please wait...' : authMode === 'login' ? 'Sign In' : 'Create Account'}
+            </button>
+            
+            <div style={{ textAlign: 'center', marginTop: 16, fontSize: 14 }}>
+              <span style={{ color: 'var(--ink-soft)' }}>
+                {authMode === 'login' ? "Don't have an account? " : "Already have an account? "}
+              </span>
+              <button type="button" onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setAuthError(null); }} style={{ background: 'none', border: 'none', color: 'var(--forest)', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                {authMode === 'login' ? 'Sign up' : 'Sign in'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   if (loading && !profile) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -250,8 +319,8 @@ function App() {
           <div className="app-header">
             <div className="brand"><span className="brand-mark">E</span> Exam Mastery</div>
             <div className="header-right">
-              <span className="pill">42-day streak</span>
-              <div className="avatar">{avatarInitials}</div>
+              <span className="pill">Exam Date: 30 Aug</span>
+              <div className="avatar" title="Log out" onClick={handleLogout} style={{ cursor: 'pointer' }}>{avatarInitials}</div>
             </div>
           </div>
 
@@ -358,7 +427,7 @@ function App() {
             <div className="brand"><span className="brand-mark">E</span> Exam Mastery</div>
             <div className="header-right">
               <span className="pill">IELTS Academic · Untimed</span>
-              <div className="avatar">{avatarInitials}</div>
+              <div className="avatar" title="Log out" onClick={handleLogout} style={{ cursor: 'pointer' }}>{avatarInitials}</div>
             </div>
           </div>
 
