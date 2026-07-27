@@ -1,0 +1,327 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String          @id @default(uuid())
+  email          String          @unique
+  passwordHash   String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  profile        UserProfile?
+  roles          UserRole[]
+  sessions       Session[]
+  attempts       Attempt[]
+  lessonProgress LessonProgress[]
+  skillProgress  SkillProgress[]
+  masteryRecords MasteryRecord[]
+  subscriptions  Subscription[]
+}
+
+model UserProfile {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName     String
+  lastName      String
+  targetScore   Float?
+  plannedExamDate DateTime?
+  studyHoursPerWeek Float?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Role {
+  id          String       @id @default(uuid())
+  name        String       @unique
+  userRoles   UserRole[]
+}
+
+model UserRole {
+  id      String @id @default(uuid())
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId  String
+  role    Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model ExamFamily {
+  id          String        @id @default(uuid())
+  name        String        @unique // e.g. "IELTS", "AP"
+  pathways    ExamPathway[]
+}
+
+model ExamPathway {
+  id           String               @id @default(uuid())
+  examFamilyId String
+  examFamily   ExamFamily           @relation(fields: [examFamilyId], references: [id], onDelete: Cascade)
+  name         String               // e.g. "Academic", "English Language"
+  versions     ExamFormatVersion[]
+  courses      Course[]
+  attempts     Attempt[]
+
+  @@unique([examFamilyId, name])
+}
+
+model ExamFormatVersion {
+  id            String        @id @default(uuid())
+  examPathwayId String
+  examPathway   ExamPathway   @relation(fields: [examPathwayId], references: [id], onDelete: Cascade)
+  version       String        // e.g. "2026"
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  sections      ExamSection[]
+  questions     Question[]
+
+  @@unique([examPathwayId, version])
+}
+
+model ExamSection {
+  id                  String            @id @default(uuid())
+  examFormatVersionId String
+  examFormatVersion   ExamFormatVersion @relation(fields: [examFormatVersionId], references: [id], onDelete: Cascade)
+  name                String            // e.g. "Listening", "Reading", "Writing", "Speaking", "MCQ", "FRQ"
+  order               Int
+  durationMinutes     Int
+  skills              Skill[]
+  attempts            AttemptSection[]
+}
+
+model Skill {
+  id            String        @id @default(uuid())
+  examSectionId String
+  examSection   ExamSection   @relation(fields: [examSectionId], references: [id], onDelete: Cascade)
+  name          String        // e.g. "Reading - T/F/NG", "Writing Task 2", "Synthesis"
+  questions     Question[]
+  skillProgress SkillProgress[]
+}
+
+model Course {
+  id            String        @id @default(uuid())
+  examPathwayId String
+  examPathway   ExamPathway   @relation(fields: [examPathwayId], references: [id], onDelete: Cascade)
+  name          String
+  stages        CourseStage[]
+}
+
+model CourseStage {
+  id        String   @id @default(uuid())
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  name      String   // e.g. "Foundation", "Exam Ready"
+  order     Int
+  modules   Module[]
+}
+
+model Module {
+  id            String      @id @default(uuid())
+  courseStageId String
+  courseStage   CourseStage @relation(fields: [courseStageId], references: [id], onDelete: Cascade)
+  name          String
+  order         Int
+  lessons       Lesson[]
+}
+
+model Lesson {
+  id        String           @id @default(uuid())
+  moduleId  String
+  module    Module           @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  name      String
+  order     Int
+  blocks    LessonBlock[]
+  progress  LessonProgress[]
+}
+
+model LessonBlock {
+  id        String   @id @default(uuid())
+  lessonId  String
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  type      String   // "heading", "text", "tip", "example", "knowledge_check"
+  content   String   // JSON string containing block configuration
+  order     Int
+}
+
+model Question {
+  id                  String             @id @default(uuid())
+  examFormatVersionId String
+  examFormatVersion   ExamFormatVersion  @relation(fields: [examFormatVersionId], references: [id], onDelete: Cascade)
+  skillId             String
+  skill               Skill              @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  questionType        String             // "MCQ", "TFNG", "FREE_RESPONSE", etc.
+  difficulty          String             // "Foundation", "Easy", "Moderate", "Difficult", "Advanced"
+  prompt              String
+  passageId           String?
+  passage             Passage?           @relation(fields: [passageId], references: [id])
+  rubricId            String?
+  rubric              Rubric?            @relation(fields: [rubricId], references: [id])
+  createdAt           DateTime           @default(now())
+  responses           Response[]
+}
+
+model Passage {
+  id        String     @id @default(uuid())
+  title     String
+  content   String
+  questions Question[]
+}
+
+model Rubric {
+  id         String            @id @default(uuid())
+  name       String
+  version    String
+  dimensions RubricDimension[]
+  questions  Question[]
+}
+
+model RubricDimension {
+  id          String   @id @default(uuid())
+  rubricId    String
+  rubric      Rubric   @relation(fields: [rubricId], references: [id], onDelete: Cascade)
+  name        String   // e.g. "Task Achievement", "Coherence"
+  description String
+  maxScore    Float
+}
+
+model Attempt {
+  id            String           @id @default(uuid())
+  userId        String
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  examPathwayId String
+  examPathway   ExamPathway      @relation(fields: [examPathwayId], references: [id], onDelete: Cascade)
+  isMock        Boolean          @default(false)
+  startedAt     DateTime         @default(now())
+  completedAt   DateTime?
+  sections      AttemptSection[]
+  responses     Response[]
+  estimates     ScoreEstimate[]
+}
+
+model AttemptSection {
+  id            String      @id @default(uuid())
+  attemptId     String
+  attempt       Attempt     @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  examSectionId String
+  examSection   ExamSection @relation(fields: [examSectionId], references: [id], onDelete: Cascade)
+  startedAt     DateTime    @default(now())
+  completedAt   DateTime?
+}
+
+model Response {
+  id          String           @id @default(uuid())
+  attemptId   String
+  attempt     Attempt          @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId  String
+  question    Question         @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  content     String           // text answer, chosen option ID, or link to file
+  isCorrect   Boolean?
+  score       Float?
+  createdAt   DateTime         @default(now())
+  feedback    FeedbackRecord[]
+}
+
+model ScoreEstimate {
+  id             String    @id @default(uuid())
+  attemptId      String
+  attempt        Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  metricName     String    // e.g. "Overall", "Reading", "Writing"
+  estimatedScore Float
+  confidence     String    // "LOW", "MEDIUM", "HIGH"
+  createdAt      DateTime  @default(now())
+}
+
+model FeedbackRecord {
+  id         String   @id @default(uuid())
+  responseId String
+  response   Response @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  dimension  String   // Dimension scored
+  score      Float
+  comments   String
+  createdAt  DateTime @default(now())
+}
+
+model LessonProgress {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId    String
+  lesson      Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  isCompleted Boolean  @default(false)
+  lastReadAt  DateTime @default(now())
+
+  @@unique([userId, lessonId])
+}
+
+model SkillProgress {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skillId     String
+  skill       Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  accuracy    Float
+  attemptsCount Int
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, skillId])
+}
+
+model MasteryRecord {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skillName String
+  status    String   // "Not started", "Learning", "Developing", "Proficient", "Mastered"
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, skillName])
+}
+
+model Recommendation {
+  id         String   @id @default(uuid())
+  userId     String
+  activityType String // "LESSON", "PRACTICE"
+  activityId String   // ID of target Lesson or Skill/Question
+  title      String
+  reason     String
+  createdAt  DateTime @default(now())
+}
+
+model Plan {
+  id           String        @id @default(uuid())
+  name         String        // "Free", "Premium"
+  entitlements Entitlement[]
+}
+
+model Entitlement {
+  id     String @id @default(uuid())
+  name   String @unique // e.g. "exam.ielts.academic", "feature.full_mocks"
+  plans  Plan[]
+}
+
+model Subscription {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planName  String   // "Free", "Premium"
+  isActive  Boolean  @default(true)
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+}
