@@ -93,18 +93,6 @@ apiRouter.post('/auth/register', async (req, res) => {
             studyHoursPerWeek: 5,
           },
         },
-        recommendations: {
-          create: [
-            {
-              title: 'Writing Task 2 — Opinion Essays',
-              reason: 'Recommended because your last Writing Task 2 attempts scored lowest on Coherence & Cohesion',
-            },
-            {
-              title: 'Reading — True/False/Not Given',
-              reason: 'Practice this question type to improve your Reading score.',
-            }
-          ]
-        },
         masteryRecords: {
           create: [
             { skillName: 'Writing Task 2', status: 'Learning' },
@@ -114,6 +102,25 @@ apiRouter.post('/auth/register', async (req, res) => {
         }
       },
       include: { profile: true },
+    });
+
+    await prisma.recommendation.createMany({
+      data: [
+        {
+          userId: newUser.id,
+          title: 'Writing Task 2 — Opinion Essays',
+          reason: 'Recommended because your last Writing Task 2 attempts scored lowest on Coherence & Cohesion',
+          activityType: 'PRACTICE',
+          activityId: 'dummy1'
+        },
+        {
+          userId: newUser.id,
+          title: 'Reading — True/False/Not Given',
+          reason: 'Practice this question type to improve your Reading score.',
+          activityType: 'PRACTICE',
+          activityId: 'dummy2'
+        }
+      ]
     });
 
     // Create session
